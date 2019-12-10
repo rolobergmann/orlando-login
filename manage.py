@@ -1,4 +1,5 @@
 import os
+import re
 from flask import Flask, jsonify, request
 from flask_script import Manager
 from flask_migrate import Migrate, MigrateCommand
@@ -35,20 +36,20 @@ Manager.add_command("db" , MigrateCommand)
 def login():
     if not request.is_json:
         return jsonify({"msg": "Missing JSON in request"}), 400
-    username = request.json.get('username', None)
+    email = request.json.get('email', None)
     password = request.json.get('password', None)
-    if not username:
-        return jsonify({"msg": "Missing username parameter"}), 400
+    if not email:
+        return jsonify({"msg": "Missing email parameter"}), 400
     if not password:
         return jsonify({"msg": "Missing password parameter"}), 400
     
-    user = User.query.filter_by(username=username).first()
-    #return jsonify(user.serialize()), 200
+    user = User.query.filter_by(email=email).first()
+
     if user is None:
-        return jsonify({"msg": "Username not found"}), 404
+        return jsonify({"msg": "Email not found"}), 404
     
     if bcrypt.check_password_hash(user.password, password):
-        access_token = create_access_token(identity=username)
+        access_token = create_access_token(identity=email)
         data = {
             "access_token": access_token,
             "user" : user.serialize(),
@@ -58,30 +59,28 @@ def login():
 
 
     
-@app.route("/users", methods=["GET","POST"])
-@app.route("/users/<int:id>", methods=["GET","PUT","DELETE"])
-def user(id=None):
-    if request.method == "GET":
-        if id is not None:
-            user = User.query.filter_by(id)
-
-            return jsonify(user.serialize()), 200
-        else:
-            users = User.query.all()
-
-            json_lists = [user.serialize() for user in users]
-
-            return jsonify(json_lists), 200
-
-    if request.method == "POST":
+@app.route("/signup", methods=["POST"])
+def user():
+        #Regular expression that checks a valid email
+        ereg = '^\w+([\.-]?\w+)*@\w+([\.-]?\w+)*(\.\w{2,3})+$'
+        #Regular expression that checks a valid password
+        preg = '^.*(?=.{8,})(?=.*\d)(?=.*[a-z])(?=.*[A-Z]).*$'
+        # Instancing the a new user
         user = User()
-        user.username = request.json.get("username")
-        pw_hash = bcrypt.generate_password_hash(request.json.get("password"))
-        user.password = pw_hash
-        user.email = request.json.get("email")
+        #Checking email 
+        if (re.search(ereg,request.json.get("email"))):
+            user.email = request.json.get("email")
+        else:
+            return "Invalid email format", 400
+        #Checking password
+        if (re.search(preg,request.json.get('password'))):
+            pw_hash = bcrypt.generate_password_hash(request.json.get("password"))
+            user.password = pw_hash
+        else:
+            return "Invalid password format", 400
+        #Ask for everything else
         user.firstname = request.json.get("firstname")
         user.lastname = request.json.get("lastname")
-        user.gender = request.json.get("gender")
         
         db.session.add(user)
 
@@ -89,19 +88,6 @@ def user(id=None):
 
         return jsonify({"success": True}), 201 
 
-    if request.method == "PUT":
-        if id is not None: 
-            user = User.query.get(id)
-            user.email = request.json.get("email")
-            db.session.commit()
-            return jsonify(user.serialize()), 201
-
-    if request.method == "DELETE":
-        if id is not None:
-            user = User.query.get(id)
-            db.session.delete(user)
-            db.session.commit()
-            return jsonify({"msg":"User has been deleted"}), 201
 
 
 
